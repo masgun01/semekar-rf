@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#1d4d33">
+  <title>{% block title %}{% endblock %} · Semekar Kreatif Nusantara</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="{{ url_for('static', filename='logo-mark.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<a class="skip-link" href="#main-content">Lewati ke konten utama</a>
+<header class="mobile-head">
+  <button class="menu-toggle" id="menuToggle" type="button" aria-label="Buka navigasi" aria-controls="sideNav" aria-expanded="false">☰</button>
+  <a class="mobile-brand" href="{{ url_for('dashboard') }}">
+    <img src="{{ url_for('static', filename='logo-mark.png') }}" alt="">
+    <span>Semekar<small>Perencanaan bahan baku</small></span>
+  </a>
+</header>
+<div class="nav-shade" id="navShade" hidden></div>
+<aside class="side" id="sideNav" aria-label="Navigasi utama">
+  <a class="brand" href="{{ url_for('dashboard') }}">
+    <span class="logo"><img src="{{ url_for('static', filename='logo-mark.png') }}" alt=""></span>
+    <span>Semekar Kreatif Nusantara<small>Perencanaan bahan baku kopi</small></span>
+  </a>
+  <div class="nav-caption">MENU UTAMA</div>
+  <a class="nav {{ 'on' if page == 'dashboard' else '' }}" href="{{ url_for('dashboard') }}"><span class="nav-icon" aria-hidden="true">▦</span><span>Dashboard analisis</span></a>
+  <a class="nav {{ 'on' if page == 'prediksi' else '' }}" href="{{ url_for('prediksi') }}"><span class="nav-icon" aria-hidden="true">◷</span><span>Prediksi kebutuhan</span></a>
+  <a class="nav {{ 'on' if page == 'banding' else '' }}" href="{{ url_for('perbandingan') }}"><span class="nav-icon" aria-hidden="true">⇄</span><span>Perbandingan metode</span></a>
+  <div class="nav-foot">
+    <div class="user-card"><span class="user-avatar" aria-hidden="true">{{ (session.u or 'A')[:1]|upper }}</span><span class="user-meta"><b>{{ session.u }}</b><small>Administrator</small></span></div>
+    <a class="nav out" href="{{ url_for('logout') }}"><span class="nav-icon" aria-hidden="true">↪</span><span>Keluar</span></a>
+  </div>
+</aside>
+<main id="main-content" tabindex="-1">{% block body %}{% endblock %}</main>
+<script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
+<script>
+const $=s=>document.querySelector(s);
+const fmt=(n,d)=>{if(n==null||n===''||Number.isNaN(Number(n)))return '–';d=typeof d==='number'?d:0;return Number(n).toLocaleString('id-ID',{minimumFractionDigits:d,maximumFractionDigits:d});};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const COL={actual:'#3b4a42',pred:'#d9822b',roast:'#7a4a2a',green:'#3f8f5b'};
+const axis={grid:{color:'#e6ece5'},border:{display:false}};
+if(window.Chart){Chart.defaults.font.family='"Plus Jakarta Sans",sans-serif';Chart.defaults.color='#66756b';}
+const pill=v=>v==null?'–':`<span class="pill ${v>=85?'ok':v>=70?'mid':'low'}">${fmt(v,1)}%</span>`;
+const NAMA_AI={gemini:'Dibuat oleh Gemini (AI)',claude:'Dibuat oleh Claude (AI)',aturan:'Analisis otomatis berbasis data'};
+function renderAI(d,box,badge){
+ badge.textContent=NAMA_AI[d.sumber]||d.sumber;badge.hidden=false;
+ box.innerHTML=(d.teks||[]).map(p=>{const m=p.match(/^([^:]{2,40}):\s*(.*)$/);return m?`<p><b>${esc(m[1])}:</b> ${esc(m[2])}</p>`:`<p>${esc(p)}</p>`;}).join('')
+  +(d.sumber!=='aturan'?'<p class="hint">Teks dibuat dari angka pada halaman ini; periksa sebelum dipakai.</p>':'')
+  +(d.galat?'<p class="hint">Analisis AI tidak dipakai: '+esc(d.galat)+'</p>':'');
+}
+const charts={};
+function draw(id,cfg){const el=$('#'+id);if(!el||!window.Chart)return;if(charts[id])charts[id].destroy();charts[id]=new Chart(el,cfg);}
+function table(el,cols,rows){
+ if(!el)return;
+ if(!rows||!rows.length){el.innerHTML='<tbody><tr><td class="empty-cell" colspan="'+cols.length+'">Tidak ada data untuk ditampilkan.</td></tr></tbody>';return;}
+ el.innerHTML='<thead><tr>'+cols.map(c=>`<th class="${c.n?'n':''}">${c.t}</th>`).join('')+'</tr></thead><tbody>'+
+ rows.map(r=>'<tr>'+cols.map(c=>`<td class="${c.n?'n':''}">${c.f?c.f(r[c.k],r):esc(r[c.k]??'–')}</td>`).join('')+'</tr>').join('')+'</tbody>';
+}
+// Navigasi seluler: satu tombol untuk membuka/menutup menu.
+(()=>{
+ const side=$('#sideNav'),toggle=$('#menuToggle'),shade=$('#navShade');if(!side||!toggle||!shade)return;
+ const close=()=>{side.classList.remove('open');shade.hidden=true;toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-label','Buka navigasi');};
+ toggle.addEventListener('click',()=>{const open=!side.classList.contains('open');side.classList.toggle('open',open);shade.hidden=!open;toggle.setAttribute('aria-expanded',String(open));toggle.setAttribute('aria-label',open?'Tutup navigasi':'Buka navigasi');});
+ shade.addEventListener('click',close);side.querySelectorAll('a').forEach(a=>a.addEventListener('click',close));document.addEventListener('keydown',e=>{if(e.key==='Escape')close();});
+})();
+</script>
+{% block js %}{% endblock %}
+</body>
+</html>

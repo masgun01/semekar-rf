@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Perbandingan metode{% endblock %}
+{% block body %}
+<div class="page-intro"><div class="eyebrow"><span class="eyebrow-dot"></span> EVALUASI PENELITIAN</div>
+  <div class="head"><div><h1>Perbandingan metode</h1><p>Halaman ini membantu mengecek apakah fitur tambahan benar-benar memperbaiki hasil Random Forest. Model utama dipilih berdasarkan data validasi, sedangkan data uji hanya untuk pelaporan.</p></div><a class="btn primary-action" href="{{ url_for('prediksi') }}">Buka prediksi kebutuhan</a></div>
+</div>
+<div class="status-box" id="info" role="status" aria-live="polite">Memuat hasil perbandingan model. Proses awal dapat memerlukan waktu lebih lama.</div>
+<div id="lvls"></div>
+<details class="technical-details"><summary><span><b>Bagaimana membaca hasil?</b><small>Penjelasan metrik dan fitur yang dibandingkan</small></span><span class="summary-chevron" aria-hidden="true">⌄</span></summary>
+  <div class="advanced-content">
+    <div class="grid g2">
+      <div class="card inset-card"><h2>Metrik</h2>
+        <p><b>Akurasi total semua varian:</b> membandingkan jumlah prediksi dan penjualan aktual setelah seluruh varian dijumlahkan. Ini membantu melihat selisih pada kebutuhan total bahan baku.</p>
+        <p><b>Median akurasi per varian:</b> nilai tengah akurasi semua varian; membantu melihat apakah hasil cukup merata, bukan hanya bagus pada varian volume besar.</p>
+        <p><b>Akurasi gabungan per varian:</b> seluruh pasangan varian dan periode dihitung bersama sehingga varian dengan volume besar lebih berpengaruh.</p>
+      </div>
+      <div class="card inset-card"><h2>Eksperimen model</h2>
+        <p><b>RF fitur historis:</b> lag, rata-rata bergerak, dan volatilitas dari penjualan sebelumnya.</p>
+        <p><b>RF + kalender:</b> menambahkan hari dalam minggu, akhir pekan, akhir bulan, bulan, dan hari libur.</p>
+        <p><b>RF + proksi kampanye:</b> menambahkan tanggal kembar, jendela 9.9–12.12, akhir tahun, serta proksi gajian. Ini bukan bukti promosi aktual.</p>
+        <p><b>Clipping p99,5:</b> membatasi target pelatihan sebagai eksperimen. Hasil dievaluasi dengan target aktual yang tidak dipangkas.</p>
+      </div>
+    </div>
+    <p>Evaluasi temporal mencegah model menggunakan informasi masa depan. Target dan tanggal yang ditandai imputasi tidak masuk metrik utama. Metrik periode test tidak digunakan untuk memilih konfigurasi.</p>
+  </div>
+</details>
+<div class="card ai"><div class="row"><div><h2>Kesimpulan evaluasi</h2><p class="card-subtitle">Penjelasan tambahan; nilai metrik dan tabel tetap menjadi hasil utama.</p></div><span class="pill ok" id="ksSrc" hidden></span><button class="btn ghost small" id="ksAi" disabled>Minta kesimpulan AI</button></div><div id="ks"><p class="muted">Kesimpulan akan ditampilkan setelah perbandingan dimuat.</p></div></div>
+{% endblock %}
+
+{% block js %}<script>
+let B=null;
+const cell=(v,b)=>`<span class="${v===b?'best':''}">${fmt(v,1)}%</span>`;
+function renderBanding(){
+ $('#info').textContent='Periode uji: '+B.uji+'. Sel berwarna hijau menunjukkan hasil terbaik pada kolom tersebut; angka lebih tinggi berarti akurasi lebih tinggi.';
+ $('#info').className='status-box success';
+ $('#lvls').innerHTML=B.tingkat.map((t,i)=>`<div class="card"><div class="row section-row"><div><h2>${esc(t.tingkat)}</h2><p class="card-subtitle">${esc(t.ket||'Ringkasan perbandingan pada tingkat agregasi ini.')}</p></div><span class="result-badge">${t.tingkat==='Harian'?fmt(t.n_baris)+' pasangan varian-hari':fmt(t.n_baris)+' observasi'}</span></div><div class="scroll"><table id="tb${i}"></table></div></div>`).join('');
+ B.tingkat.forEach((t,i)=>{const best=k=>Math.max(...t.metode.map(m=>Number(m[k]??-Infinity)));
+  table($('#tb'+i),[{t:'Metode',k:'metode'},{t:'Akurasi total',k:'total',n:1,f:v=>cell(v,best('total'))},{t:'Median akurasi varian',k:'median',n:1,f:v=>cell(v,best('median'))},{t:'Akurasi gabungan varian',k:'varian',n:1,f:v=>cell(v,best('varian'))}],t.metode);
+ });
+ $('#ksAi').disabled=false;
+ renderAI({sumber:'aturan',teks:B.kesimpulan||[]},$('#ks'),$('#ksSrc'));
+}
+fetch('/api/banding').then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||'Gagal memuat hasil perbandingan.');return d;}).then(d=>{B={...d.banding,kesimpulan:d.kesimpulan};renderBanding();}).catch(e=>{const el=$('#info');el.textContent='Hasil perbandingan belum dapat dimuat: '+e.message+'. Pastikan aplikasi berjalan dan dataset tersedia.';el.className='status-box warning';});
+$('#ksAi').onclick=async e=>{const btn=e.target;btn.disabled=true;btn.textContent='Menganalisis…';
+ try{const r=await fetch('/api/banding/ai',{method:'POST'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Analisis tidak tersedia.');renderAI(d,$('#ks'),$('#ksSrc'));}
+ catch(x){$('#ks').insertAdjacentHTML('beforeend','<p class="hint">Analisis tambahan tidak tersedia: '+esc(x.message)+'</p>');}
+ finally{btn.disabled=false;btn.textContent='Minta kesimpulan AI';}
+};
+</script>{% endblock %}

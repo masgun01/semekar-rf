@@ -1,0 +1,22 @@
+<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Masuk · Semekar Kreatif Nusantara</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="{{ url_for('static', filename='logo-mark.png') }}"><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head><body>
+<div class="login">
+<section class="hero">
+ <svg class="bg" viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="16" cy="16" rx="9" ry="13" transform="rotate(40 16 16)" fill="currentColor"/><path d="M9 25c5-3 2-8 7-9.5s2-6 7.500-9" fill="none" stroke="#1d4d33" stroke-width="1.2" stroke-linecap="round"/></svg>
+ <div class="brand"><span class="logo"><img src="{{ url_for('static', filename='logo-mark.png') }}" alt="Logo Semekar"></span><span>PT Semekar Kreatif Nusantara</span></div>
+ <div><h1>Stok roasted dan green bean, direncanakan dari data penjualan.</h1>
+ <p>Model Random Forest mempelajari pola harian tiap varian kopi, lalu menghitung kebutuhan stok untuk periode berikutnya.</p></div>
+ <small>Sistem prediksi kebutuhan stok</small>
+</section>
+<section class="form">
+ <form method="post">
+  <img class="flogo" src="{{ url_for('static', filename='logo.png') }}" alt="Semekar"><h2>Masuk ke akun Anda</h2>
+  {% if err %}<p class="err" role="alert">{{ err }}</p>{% endif %}
+  <label>Nama pengguna<input name="username" autocomplete="username" required autofocus></label>
+  <label>Kata sandi<input type="password" name="password" autocomplete="current-password" required></label>
+  <button class="btn">Masuk</button>
+ </form>
+</section>
+</div></body></html>

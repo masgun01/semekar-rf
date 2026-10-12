@@ -1,0 +1,97 @@
+{% extends "base.html" %}{% block title %}Dashboard analisis{% endblock %}
+{% block body %}
+<div class="page-intro"><div class="eyebrow"><span class="eyebrow-dot"></span> MONITORING MODEL</div>
+<div class="head"><div><h1>Dashboard analisis</h1><p>Lihat performa model pada data historis. Untuk membuat ramalan kebutuhan roasted dan green bean, buka menu Prediksi kebutuhan.</p></div>
+<button class="btn ghost" id="re">Bangun ulang evaluasi penelitian</button></div></div>
+<div class="callout-action"><div class="callout-icon" aria-hidden="true">↗</div><div><b>Ingin menghitung kebutuhan bahan baku terbaru?</b><p>Unggah ekspor penjualan pada halaman prediksi. Sistem menghitung roasted bean lalu mengonversinya ke green bean berdasarkan penyusutan tiap varian.</p></div><a class="btn primary-action" href="{{ url_for('prediksi') }}">Mulai prediksi</a></div>
+<div class="status-box" id="dashboardStatus" role="status" aria-live="polite">Memuat evaluasi model dan ringkasan data. Proses awal dapat memerlukan waktu lebih lama.</div>
+
+<div class="card"><h2>Pembagian dataset temporal</h2><div class="split" id="split"></div><div class="legend" id="leg"></div><p class="hint">Target imputasi/tanggal tidak lengkap dikeluarkan dari pelatihan dan evaluasi utama. Model operasional baru dilatih setelah pemilihan konfigurasi dan pelaporan uji historis selesai.</p></div>
+<div class="card"><h2>Pemilihan konfigurasi berdasarkan validasi</h2><p id="selectedModel" class="hint"></p><div class="scroll short"><table id="tSelect"></table></div></div>
+<div class="grid g6" id="kpi"></div>
+
+<div class="card" id="mx"><div class="row"><h2>Cara membaca metrik evaluasi</h2><a class="btn ghost" href="/perbandingan">Lihat perbandingan metode</a></div>
+ <div class="xs"><table id="tMx"></table></div>
+ <h3>Kesimpulan evaluasi (bahan penjelasan saat sidang)</h3><div id="kes"></div></div>
+<div class="grid g2" id="stok"></div>
+
+<div class="card"><div class="row"><h2>Aktual vs prediksi pada data uji (gram/hari)</h2><select id="sel" aria-label="Pilih varian"></select></div>
+<div class="chart tall"><canvas id="cLine"></canvas></div></div>
+
+<div class="grid g2 gw">
+ <div class="card"><h2>Fitur paling berpengaruh</h2><div class="chart"><canvas id="cImp"></canvas></div></div>
+ <div class="card"><div class="row"><h2>Akurasi dan kesalahan per varian</h2><select id="lv" aria-label="Tingkat evaluasi"><option value="1">Harian</option><option value="7">Periode 7 hari</option><option value="14">Periode 14 hari</option><option value="30" selected>Periode 30 hari</option></select></div><p class="hint" id="lvn"></p><div class="scroll short"><table id="tPv"></table></div></div>
+</div>
+
+<div class="card"><div class="row"><h2>Tabel aktual vs prediksi</h2>
+ <div class="pager"><span id="pg"></span><button class="btn ghost" id="prev" aria-label="Sebelumnya">‹</button><button class="btn ghost" id="next" aria-label="Berikutnya">›</button></div></div>
+<div class="scroll"><table id="tbl"></table></div></div>
+{% endblock %}
+
+{% block js %}<script>
+let D,sel='',cur=[],pg=0;const P=15;
+fetch('/api/analisis').then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||'Gagal memuat evaluasi.');return d;}).then(d=>{D=d;init();$('#dashboardStatus').hidden=true;}).catch(e=>{const el=$('#dashboardStatus');el.textContent='Dashboard belum dapat dimuat: '+e.message+'. Pastikan dependensi terpasang dan aplikasi berjalan dengan benar.';el.className='status-box warning';});
+
+function init(){
+ const cl=['#1d4d33','#3f8f5b','#d9822b'];
+ $('#split').innerHTML=D.split.map((s,i)=>`<i style="flex:${s.n};background:${cl[i]}"></i>`).join('');
+ $('#leg').innerHTML=D.split.map((s,i)=>`<div><span class="dot" style="background:${cl[i]}"></span><b>${s.fase[0].toUpperCase()+s.fase.slice(1)}</b> ${fmt(s.n)} target valid, ${fmt(s.n_imputasi||0)} baris/tanggal ditandai imputasi, ${s.dari} s.d. ${s.sampai}</div>`).join('');
+ $('#selectedModel').textContent=`Model operasional dipilih dari validasi ${D.selection.validation[0] ? 'temporal' : ''}: ${D.selection.selected}. Pemilihan menggunakan WAPE validasi; metrik periode uji tidak digunakan untuk memilih konfigurasi.`;
+ table($('#tSelect'),[{t:'Konfigurasi',k:'nama'},{t:'WAPE validasi',k:'WAPE',n:1,f:v=>v==null?'–':fmt(v,2)+'%'},{t:'MAE (g)',k:'MAE',n:1,f:v=>fmt(v,1)},{t:'RMSE (g)',k:'RMSE',n:1,f:v=>fmt(v,1)},{t:'Jumlah target',k:'n',n:1,f:fmt},{t:'Terpilih',k:'key',f:v=>v===D.selection.selected_key?'Ya':'Tidak'}],D.selection.validation);
+ const k=D.kpi;
+ $('#kpi').innerHTML=[['<span id="aktL"></span>','<span id="aktV"></span>'],['MAE',fmt(k.MAE,1)+' g'],['RMSE',fmt(k.RMSE,1)+' g'],['MAPE',fmt(k.MAPE,1)+'%'],['WAPE',fmt(k.WAPE,1)+'%'],['R²',fmt(k.R2,3)]]
+  .map(([a,b])=>`<div class="card kpi"><span>${a}</span><b>${b}</b></div>`).join('');
+ const s=D.stok,dl=(a,p)=>(p-a)/a*100;
+ $('#stok').innerHTML=[['roasted','Roasted',s.roasted_aktual,s.roasted_prediksi],['green','Green bean',s.green_aktual,s.green_prediksi]]
+  .map(([c,n,a,p])=>`<div class="card kpi stk ${c}"><span>Kebutuhan ${n} pada periode uji</span><b>${fmt(p)} kg <small>prediksi</small></b><small>Aktual ${fmt(a)} kg · selisih ${dl(a,p)>0?'+':''}${fmt(dl(a,p),1)}%</small></div>`).join('');
+ $('#sel').innerHTML='<option value="">Semua varian</option>'+D.pv.map(p=>`<option>${esc(p.varian)}</option>`).join('');
+ $('#sel').onchange=e=>{sel=e.target.value;render();};
+ const im=D.imp.slice(0,8);
+ draw('cImp',{type:'bar',data:{labels:im.map(i=>i[0]),datasets:[{data:im.map(i=>+(i[1]*100).toFixed(1)),backgroundColor:COL.green,borderRadius:3}]},
+  options:{indexAxis:'y',maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{...axis,title:{display:true,text:'Kontribusi (%)'}},y:{grid:{display:false}}}}});
+ $('#lv').onchange=lvl;lvl();metrik();
+ render();
+}
+
+function metrik(){
+ const k=D.kpi,a1=D.lv['1'][0].akurasi,a7=D.lv['7'][0].akurasi,a30=D.lv['30'][0].akurasi,rs=k.RMSE/k.MAE;
+ table($('#tMx'),[{t:'Metrik',k:'m'},{t:'Rumus singkat',k:'r'},{t:'Artinya',k:'a'},{t:'Kegunaan',k:'g'},{t:'Nilai pada data uji',k:'n'}],[
+  {m:'Akurasi (100% − WAPE)',r:'100% dikurangi WAPE',a:'Seberapa dekat total prediksi dengan total penjualan nyata, dalam persen.',g:'Ringkasan untuk manajemen. Nilainya bergantung pada tingkat agregasi: per varian per hari paling ketat, total periode paling longgar.',n:fmt(100-k.WAPE,1)+'% (per varian per hari)'},
+  {m:'MAE (Mean Absolute Error)',r:'rata-rata dari |aktual − prediksi|',a:'Rata-rata prediksi meleset berapa gram per varian per hari.',g:'Paling mudah dijelaskan dan langsung bisa diubah menjadi kg stok. Tidak terlalu terpengaruh oleh satu lonjakan penjualan.',n:fmt(k.MAE,1)+' g'},
+  {m:'RMSE (Root Mean Squared Error)',r:'akar dari rata-rata (aktual − prediksi) kuadrat',a:'Seperti MAE, tetapi kesalahan besar dihukum lebih berat.',g:'Menilai risiko meleset jauh saat promo atau lonjakan penjualan, yang bisa membuat stok kurang. RMSE selalu sama dengan atau lebih besar dari MAE; makin jauh selisihnya, makin banyak kesalahan besar.',n:fmt(k.RMSE,1)+' g ('+fmt(rs,2)+' kali MAE)'},
+  {m:'MAPE (Mean Absolute Percentage Error)',r:'rata-rata |selisih| ÷ aktual × 100%',a:'Rata-rata kesalahan sebagai persen dari penjualan hari itu.',g:'Mudah membandingkan varian yang skalanya berbeda. Kelemahan: hari dengan penjualan kecil membuat persentase membengkak (hari tanpa penjualan dilewati), sehingga kurang cocok untuk penjualan yang putus-putus.',n:fmt(k.MAPE,1)+'%'},
+  {m:'WAPE (Weighted Absolute Percentage Error)',r:'jumlah |selisih| ÷ jumlah aktual × 100%',a:'Total kesalahan dibandingkan total penjualan; varian yang penjualannya besar berpengaruh lebih besar.',g:'Lebih stabil daripada MAPE untuk penjualan yang putus-putus, dan menjadi dasar akurasi. Cocok untuk perencanaan stok karena yang dipentingkan adalah volume.',n:fmt(k.WAPE,1)+'%'},
+  {m:'R² (koefisien determinasi)',r:'1 − jumlah selisih² ÷ jumlah (aktual − rata-rata)²',a:'Seberapa besar naik turun penjualan yang berhasil dijelaskan model. 1 berarti sempurna, 0 berarti sama dengan menebak rata-rata.',g:'Menunjukkan bahwa model menangkap pola (hari, tanggal, tren), bukan sekadar menebak rata-rata.',n:fmt(k.R2,3)+' (sekitar '+fmt(k.R2*100,0)+'% pola dijelaskan)'}]);
+ $('#kes').innerHTML=[
+  'Tingkat paling rinci (per varian per hari): model rata-rata meleset <b>'+fmt(k.MAE,1)+' g</b>, WAPE <b>'+fmt(k.WAPE,1)+'%</b> (akurasi '+fmt(100-k.WAPE,1)+'%), R² '+fmt(k.R2,3)+'. Penjualan harian satu varian memang naik turun tajam, jadi ukuran ini sengaja yang paling ketat.',
+  'Semakin besar agregasinya, semakin akurat: total semua varian per hari <b>'+fmt(a1,1)+'%</b>, per 7 hari <b>'+fmt(a7,1)+'%</b>, dan per 30 hari <b>'+fmt(a30,1)+'%</b>. Pembelian green bean direncanakan per periode, jadi akurasi periode inilah yang paling relevan untuk keputusan stok.',
+  'Metrik yang paling tepat untuk data ini adalah WAPE dan MAE. MAPE ('+fmt(k.MAPE,1)+'%) kurang adil karena penjualan harian satu varian sering kecil. RMSE dipakai untuk melihat risiko kesalahan besar: '+fmt(rs,2)+' kali MAE menunjukkan ada hari-hari dengan lonjakan yang sulit ditebak.',
+  'Angka-angka ini harus dibandingkan dengan baseline dan konfigurasi fitur lain. Lihat halaman <a href="/perbandingan">Perbandingan metode</a>. Model dipilih dari validasi, sedangkan data uji hanya untuk pelaporan.'].map(t=>'<p>'+t+'</p>').join('');
+}
+
+const LV={'1':'harian','7':'7 hari','14':'14 hari','30':'30 hari'};
+function lvl(){
+ const L=$('#lv').value,rows=D.lv[L],u=L==='1'?'hari':LV[L];
+ $('#aktL').textContent='Akurasi total ('+LV[L]+')';$('#aktV').textContent=fmt(rows[0].akurasi,1)+'%';
+ $('#lvn').textContent=L==='1'?'Dibaca per hari per varian: paling ketat, karena penjualan harian satu varian naik turun tajam. Angka kg adalah rata-rata per hari.':'Dibaca per periode '+LV[L]+' (total penjualan satu periode ke depan), sesuai kebutuhan perencanaan stok. Ramalan rekursif tanpa data masa depan. Angka kg adalah rata-rata per periode '+LV[L]+'.';
+ table($('#tPv'),[{t:'Varian',k:'varian'},{t:'Akurasi',k:'akurasi',n:1,f:pill},{t:'Kesalahan (± kg)',k:'galat',n:1,f:v=>fmt(v,1)},{t:'Aktual (kg)',k:'a',n:1,f:v=>fmt(v,1)},{t:'Prediksi (kg)',k:'p',n:1,f:v=>fmt(v,1)}],rows);
+}
+
+function render(){
+ const rows=sel?D.rows.filter(r=>r[1]===sel):D.rows,by={};
+ rows.forEach(r=>{const o=by[r[0]]??=[0,0];o[0]+=r[2];o[1]+=r[3];});
+ const days=Object.keys(by).sort(),ds=(l,i,c,dash)=>({label:l,data:days.map(d=>by[d][i]),borderColor:c,borderWidth:1.8,pointRadius:0,tension:.2,borderDash:dash});
+ draw('cLine',{type:'line',data:{labels:days,datasets:[ds('Aktual',0,COL.actual,[]),ds('Prediksi Random Forest',1,COL.pred,[5,3])]},
+  options:{maintainAspectRatio:false,interaction:{mode:'index',intersect:false},scales:{y:{...axis,title:{display:true,text:'gram / hari'}},x:{grid:{display:false},ticks:{maxTicksLimit:10}}}}});
+ cur=rows;pg=0;page();
+}
+
+function page(){
+ const s=cur.slice(pg*P,pg*P+P).map(r=>[...r,r[3]-r[2],r[2]>0?fmt(Math.abs(r[3]-r[2])/r[2]*100,1):'–',r[2]>0?fmt(Math.max(0,100-Math.abs(r[3]-r[2])/r[2]*100),1):'–']);
+ table($('#tbl'),[{t:'Tanggal',k:0},{t:'Varian',k:1},{t:'Aktual (g)',k:2,n:1,f:fmt},{t:'Prediksi (g)',k:3,n:1,f:fmt},{t:'Selisih (g)',k:4,n:1,f:fmt},{t:'Galat (%)',k:5,n:1},{t:'Akurasi (%)',k:6,n:1}],s);
+ $('#pg').textContent=`${cur.length?pg*P+1:0}–${Math.min(cur.length,pg*P+P)} dari ${fmt(cur.length)}`;
+}
+$('#prev').onclick=()=>{if(pg>0){pg--;page();}};
+$('#next').onclick=()=>{if((pg+1)*P<cur.length){pg++;page();}};
+$('#re').onclick=async e=>{e.target.disabled=true;e.target.textContent='Menghitung ulang…';try{const r=await fetch('/api/latih-ulang',{method:'POST'});if(!r.ok){const d=await r.json();throw new Error(d.error||'Gagal menghitung ulang.');}location.reload();}catch(x){alert('Evaluasi penelitian gagal diperbarui: '+x.message);e.target.disabled=false;e.target.textContent='Bangun ulang evaluasi penelitian';}};
+</script>{% endblock %}

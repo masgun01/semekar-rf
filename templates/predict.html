@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Prediksi kebutuhan bahan baku{% endblock %}
+{% block body %}
+<section class="page-intro">
+  <div class="eyebrow"><span class="eyebrow-dot"></span> PERENCANAAN BAHAN BAKU</div>
+  <div class="head"><div><h1>Prediksi kebutuhan kopi</h1><p>Unggah riwayat penjualan untuk memperkirakan kebutuhan roasted bean dan menghitung estimasi green bean dari data penyusutan per varian. <b>Tidak perlu mengunggah stok gudang.</b></p></div></div>
+</section>
+
+<div class="steps" aria-label="Langkah prediksi">
+  <div class="step active"><span>1</span><div><b>Unggah data</b><small>CSV atau Excel</small></div></div>
+  <div class="step-line"></div>
+  <div class="step active"><span>2</span><div><b>Atur prediksi</b><small>Periode dan buffer</small></div></div>
+  <div class="step-line"></div>
+  <div class="step"><span>3</span><div><b>Lihat hasil</b><small>Roasted dan green bean</small></div></div>
+</div>
+
+<form id="f" class="card workflow-card" enctype="multipart/form-data">
+  <section class="form-section">
+    <div class="section-heading"><span class="section-number">1</span><div><h2>Unggah riwayat penjualan</h2><p>Pilih ekspor transaksi terbaru. Kamu bisa memilih beberapa file sekaligus dari kanal penjualan berbeda.</p></div></div>
+    <label class="drop" id="drop" for="file" tabindex="0">
+      <input type="file" name="file" id="file" accept=".csv,.xlsx,.xls" hidden multiple>
+      <span class="upload-icon" aria-hidden="true">↑</span>
+      <b id="fn">Pilih file atau tarik file ke area ini</b>
+      <span>Format CSV atau XLSX · Disarankan memiliki minimal 90 hari riwayat penjualan yang konsisten.</span>
+      <span class="btn ghost small" aria-hidden="true">Pilih file</span>
+    </label>
+    <div class="selected-files" id="fileList" hidden></div>
+    <p class="field-help">Sistem mengenali format ekspor yang didukung dan menggabungkan file yang dipilih. Kolom pribadi pelanggan tidak diperlukan untuk prediksi.</p>
+  </section>
+
+  <div class="section-divider"></div>
+  <section class="form-section">
+    <div class="section-heading"><span class="section-number">2</span><div><h2>Atur periode dan buffer</h2><p>Gunakan pengaturan awal yang disarankan, atau ubah sesuai kebutuhan perencanaan.</p></div></div>
+    <div class="settings-grid">
+      <label class="field">Prediksi untuk berapa hari ke depan?
+        <select name="horizon" id="horizon"><option value="7">7 hari</option><option value="14">14 hari</option><option value="30" selected>30 hari (disarankan)</option><option value="60">60 hari</option><option value="90">90 hari</option></select>
+        <small>Semakin jauh periodenya, semakin besar ketidakpastian ramalan.</small>
+      </label>
+      <label class="field">Buffer kebutuhan
+        <div class="input-with-action"><input type="number" name="buffer" id="buffer" placeholder="Otomatis (disarankan)" min="0" max="100" step="0.5" inputmode="decimal"><span>%</span></div>
+        <small id="bufferModeHelp">Kosongkan untuk memakai buffer otomatis dari kesalahan prediksi pada data validasi.</small>
+        <button class="text-button" type="button" id="autoBuffer">Kembali ke buffer otomatis</button>
+      </label>
+      <label class="field">Tingkat cakupan buffer otomatis
+        <select name="tingkat" id="tingkat"><option value="80">80% · lebih hemat</option><option value="90" selected>90% · seimbang</option><option value="95">95% · lebih hati-hati</option><option value="99">99% · sangat hati-hati</option></select>
+        <small id="coverageHelp">Digunakan saat buffer otomatis. Ini tingkat kalibrasi historis, bukan jaminan stok selalu cukup.</small>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="btn primary-action" id="go" type="submit"><span aria-hidden="true">↗</span> Proses dan tampilkan prediksi</button>
+      <span class="field-help">Model akan memproses data, membuat ramalan, lalu mengonversi roasted menjadi green bean.</span>
+    </div>
+    <div class="progress-box" id="progressBox" role="status" aria-live="polite" hidden><span class="spinner" aria-hidden="true"></span><div><b id="progressTitle">Sedang memproses data…</b><small id="progressText">Jangan tutup halaman ini sampai hasil muncul.</small></div></div>
+    <div class="err" id="err" role="alert" hidden></div>
+  </section>
+</form>
+
+<details class="advanced-settings">
+  <summary><span><b>Pengaturan lanjutan</b><small>Perbarui model operasional menggunakan data terbaru</small></span><span class="summary-chevron" aria-hidden="true">⌄</span></summary>
+  <div class="advanced-content">
+    <p>Gunakan hanya ketika kamu memiliki ekspor penjualan terbaru dan ingin memvalidasi apakah model baru lebih baik daripada baseline. Proses ini terpisah dari evaluasi penelitian skripsi.</p>
+    <button class="btn secondary-action" id="trainOperational" type="button">Validasi dan perbarui model</button>
+    <div class="status-box" id="operationalStatus" role="status" aria-live="polite">Memerlukan setidaknya 90 hari riwayat. Model hanya diaktifkan jika hasil validasi temporal menyamai atau mengalahkan baseline rata-rata 7 hari.</div>
+  </div>
+</details>
+
+<section id="out" class="results" hidden>
+  <div class="result-heading"><div><div class="eyebrow"><span class="eyebrow-dot"></span> HASIL PERHITUNGAN</div><h2>Ringkasan kebutuhan bahan baku</h2><p id="periodRange"></p></div><span class="result-badge" id="resultModel">Prediksi selesai</span></div>
+
+  <div class="section-heading result-section-heading"><span class="section-number green-number">A</span><div><h3>Kebutuhan dari hasil prediksi</h3><p>Estimasi kebutuhan bruto sebelum buffer dan sebelum dikurangi stok gudang.</p></div></div>
+  <div class="grid g2 primary-kpis" id="kpi"></div>
+
+  <div class="section-heading result-section-heading"><span class="section-number amber-number">B</span><div><h3>Perencanaan dengan buffer</h3><p>Buffer merupakan tambahan untuk mengantisipasi kemungkinan prediksi terlalu rendah. Hasil prediksi utama tidak diubah.</p></div></div>
+  <div class="grid g3" id="bufferKpi"></div>
+  <div class="note-box" id="bufferExplain"></div>
+
+  <div class="card ai"><div class="row"><div><h2>Penjelasan hasil</h2><p class="card-subtitle">Ringkasan otomatis untuk membantu membaca angka.</p></div><span class="pill ok" id="aiSrc" hidden></span></div><div id="aiTxt"><p class="muted">Ringkasan akan tampil setelah perhitungan.</p></div></div>
+
+  <div class="card"><div class="row section-row"><div><h2>Ringkasan per periode</h2><p class="card-subtitle">Lihat perubahan kebutuhan bahan baku dari waktu ke waktu.</p></div><label class="compact-field">Kelompokkan<select id="rg" aria-label="Pilih ringkasan"><option value="mingguan">Per minggu</option><option value="bulanan">Per bulan</option></select></label></div>
+    <p class="hint" id="rgn"></p><div class="scroll short"><table id="tRg"></table></div></div>
+
+  <div class="grid g2">
+    <div class="card"><h2>Riwayat dan prediksi harian</h2><p class="card-subtitle">Jumlah roasted bean gabungan semua varian dalam kg per hari.</p><div class="chart"><canvas id="cLine"></canvas></div></div>
+    <div class="card"><h2>10 varian dengan kebutuhan terbesar</h2><p class="card-subtitle">Perbandingan kebutuhan roasted dan green bean dalam kg.</p><div class="chart"><canvas id="cBar"></canvas></div></div>
+  </div>
+
+  <div class="card"><div class="row section-row"><div><h2>Kebutuhan setiap varian</h2><p class="card-subtitle">Kolom utama diringkas agar mudah dibaca. Unduh CSV untuk rincian gram dan sumber pemetaan.</p></div><div class="button-group"><a class="btn ghost small" href="/unduh/prediksi_harian">Unduh prediksi</a><a class="btn ghost small" href="/unduh/kebutuhan_stok">Unduh kebutuhan</a></div></div>
+    <p class="field-help" id="stockNote"></p><div class="scroll"><table id="tStok"></table></div></div>
+
+  <details class="technical-details"><summary><span><b>Rincian teknis dan pemeriksaan data</b><small>Audit preprocessing dan contoh data hasil olahan</small></span><span class="summary-chevron" aria-hidden="true">⌄</span></summary>
+    <div class="advanced-content"><div class="grid g2">
+      <div class="card inset-card"><h2>Catatan praproses</h2><ul class="log" id="log"></ul></div>
+      <div class="card inset-card"><div class="row"><div><h2>Data hasil praproses</h2><p class="card-subtitle">Sampel dari hari terakhir pada data yang diunggah.</p></div><a class="btn ghost small" href="/unduh/praproses">Unduh CSV</a></div><div class="scroll"><table id="tPre"></table></div></div>
+    </div></div>
+  </details>
+</section>
+{% endblock %}
+
+{% block js %}<script>
+const f=$('#f'),fi=$('#file'),drop=$('#drop'),bufferInput=$('#buffer'),coverage=$('#tingkat');
+let RG=null;
+const fileBytes=n=>n<1024*1024?fmt(n/1024,1)+' KB':fmt(n/1024/1024,1)+' MB';
+function updateFileList(){
+ const files=[...fi.files],list=$('#fileList');
+ $('#fn').textContent=files.length?`${files.length} file siap diproses`:'Pilih file atau tarik file ke area ini';
+ if(!files.length){list.hidden=true;list.innerHTML='';return;}
+ list.hidden=false;
+ list.innerHTML='<div class="file-list-heading"><b>File dipilih</b><button type="button" class="text-button" id="clearFiles">Hapus semua</button></div>'+files.map(x=>`<div class="file-item"><span class="file-type">${esc(x.name.split('.').pop().toUpperCase())}</span><span class="file-name" title="${esc(x.name)}">${esc(x.name)}</span><small>${fileBytes(x.size)}</small></div>`).join('');
+ $('#clearFiles').onclick=()=>{fi.value='';updateFileList();};
+}
+fi.addEventListener('change',updateFileList);
+drop.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fi.click();}});
+['dragenter','dragover'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('on');}));
+['dragleave','dragend'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove('on');}));
+drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('on');if(e.dataTransfer?.files?.length){fi.files=e.dataTransfer.files;updateFileList();}});
+function setBufferMode(){
+ const manual=bufferInput.value.trim()!=='';
+ coverage.disabled=manual;
+ $('#bufferModeHelp').textContent=manual?'Buffer manual akan dipakai. Kosongkan kolom untuk kembali ke estimasi otomatis.':'Kosongkan untuk memakai buffer otomatis yang dikalibrasi dari kesalahan pada data validasi.';
+ $('#coverageHelp').textContent=manual?'Tidak dipakai saat buffer manual dipilih.':'Tingkat kalibrasi historis, bukan jaminan stok selalu cukup.';
+ $('#autoBuffer').hidden=!manual;
+}
+bufferInput.addEventListener('input',setBufferMode);
+$('#autoBuffer').addEventListener('click',()=>{bufferInput.value='';setBufferMode();bufferInput.focus();});
+setBufferMode();
+function setBusy(busy,title='Sedang memproses data…',text='Jangan tutup halaman ini sampai hasil muncul.'){
+ $('#progressBox').hidden=!busy;$('#progressTitle').textContent=title;$('#progressText').textContent=text;
+ $('#go').disabled=busy;$('#trainOperational').disabled=busy;
+ $('#go').innerHTML=busy?'<span class="spinner inline-spinner" aria-hidden="true"></span> Memproses…':'<span aria-hidden="true">↗</span> Proses dan tampilkan prediksi';
+}
+function showError(message,details=[]){
+ const el=$('#err');el.innerHTML='<b>'+esc(message)+'</b>'+(details.length?'<ul class="lap">'+details.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'');el.hidden=false;el.scrollIntoView({behavior:'smooth',block:'center'});
+}
+f.addEventListener('submit',async e=>{
+ e.preventDefault();$('#err').hidden=true;
+ const files=[...fi.files];
+ if(!files.length){showError('Pilih minimal satu file riwayat penjualan terlebih dahulu.');drop.focus();return;}
+ const bad=files.filter(x=>!(/\.(csv|xlsx|xls)$/i).test(x.name));
+ if(bad.length){showError('Ada file dengan format yang tidak didukung.',bad.map(x=>x.name));return;}
+ if(bufferInput.value.trim()!==''&&(!Number.isFinite(Number(bufferInput.value))||Number(bufferInput.value)<0||Number(bufferInput.value)>100)){showError('Buffer manual harus berada antara 0 dan 100%.');bufferInput.focus();return;}
+ $('#out').hidden=true;setBusy(true,'Membaca dan memvalidasi transaksi…','Data akan diperiksa sebelum fitur historis dan prediksi dibentuk.');
+ let d={};
+ try{
+  const r=await fetch('/api/prediksi',{method:'POST',body:new FormData(f)});d=await r.json();
+  if(!r.ok)throw new Error(d.error||'Prediksi belum berhasil.');
+  setBusy(true,'Menyusun hasil prediksi…','Menghitung kebutuhan roasted bean, buffer, dan estimasi green bean per varian.');
+  show(d);
+ }catch(x){const detail=[...(d.log||[]),...(d.warn||[])];showError(x.message,detail);}
+ finally{setBusy(false);}
+});
+
+$('#trainOperational').addEventListener('click',async()=>{
+ const b=$('#trainOperational'),status=$('#operationalStatus');
+ if(!fi.files.length){status.textContent='Pilih file riwayat penjualan pada langkah pertama terlebih dahulu.';status.className='status-box warning';return;}
+ const old=b.textContent;b.disabled=true;$('#go').disabled=true;b.textContent='Memvalidasi model…';status.textContent='Menguji model pada periode terbaru yang ditahan dari pelatihan. Evaluasi penelitian historis tidak diubah.';status.className='status-box';
+ try{
+  const r=await fetch('/api/latih-operasional',{method:'POST',body:new FormData(f)}),d=await r.json();
+  if(!r.ok)throw new Error(d.error||'Validasi pembaruan gagal.');
+  if(d.accepted){const rf=d.rf||{},base=d.baseline_rm7||{};status.textContent=`Model operasional diperbarui. WAPE model ${fmt(rf.WAPE,2)}% dan baseline ${fmt(base.WAPE,2)}%, dari ${fmt(d.n_rows)} observasi validasi. Jalankan prediksi lagi untuk memakai model terbaru.`;status.className='status-box success';}
+  else{status.textContent=`Model tidak diubah. ${d.message||'Model belum mengungguli baseline.'} WAPE model ${fmt((d.rf||{}).WAPE,2)}%, baseline ${fmt((d.baseline_rm7||{}).WAPE,2)}%.`;status.className='status-box warning';}
+ }catch(x){status.textContent='Pembaruan gagal: '+x.message;status.className='status-box warning';}
+ finally{b.disabled=false;$('#go').disabled=false;b.textContent=old;}
+});
+
+async function loadAI(){
+ const box=$('#aiTxt'),badge=$('#aiSrc');badge.hidden=true;box.innerHTML='<p class="muted">Membuat penjelasan hasil…</p>';
+ try{const r=await fetch('/api/ai',{method:'POST'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Analisis tidak tersedia.');renderAI(d,box,badge);}
+ catch(x){box.innerHTML='<p class="muted">Ringkasan otomatis tidak tersedia: '+esc(x.message)+'. Gunakan angka dan tabel di atas sebagai hasil utama.</p>';}
+}
+function ringkasan(){
+ if(!RG)return;const t=$('#rg').value;
+ $('#rgn').textContent='Total kebutuhan untuk setiap '+(t==='mingguan'?'pekan (7 hari berurutan sejak hari pertama ramalan)':'bulan kalender')+'. Akurasi historis periode uji: 7 hari '+fmt(RG.akurasi['7'],1)+'%, 30 hari '+fmt(RG.akurasi['30'],1)+'%. Angka ini adalah evaluasi historis, bukan jaminan hasil masa depan.';
+ table($('#tRg'),[{t:'Periode',k:'periode'},{t:'Rentang tanggal',k:'rentang'},{t:'Jumlah hari',k:'hari',n:1},{t:'Roasted (kg)',k:'roasted',n:1,f:v=>fmt(v,2)},{t:'Green bean (kg)',k:'green',n:1,f:v=>fmt(v,2)},{t:'Rata-rata roasted per hari (kg)',k:'rata_harian',n:1,f:v=>fmt(v,2)}],RG[t]);
+}
+function show(d){
+ const s=d.ringkas;$('#out').hidden=false;
+ $('#periodRange').textContent='Periode prediksi: '+s.prediksi;
+ $('#resultModel').textContent=d.model_source==='model operasional tervalidasi'?'Model operasional tervalidasi':'Model penelitian';
+ $('#kpi').innerHTML=[
+  ['Kebutuhan roasted bean',fmt(s.roasted,2)+' <small>kg</small>','Total prediksi penjualan dalam periode terpilih.'],
+  ['Estimasi green bean',fmt(s.green,2)+' <small>kg</small>',s.green_mapping_complete?'Dihitung dari rate penyusutan per varian.':'Sebagian rate penyusutan belum tersedia.']
+ ].map(([a,v,n])=>`<div class="card kpi primary-kpi"><span>${a}</span><b>${v}</b><small>${n}</small></div>`).join('');
+ const mode=s.mode==='otomatis'?'Otomatis':'Manual';
+ const basis=s.buffer_horizon_proxy?`Acuan ${s.buffer_basis_hz||30} hari; proksi untuk horizon ${d.horizon||''} hari`: `Kalibrasi ${s.buffer_basis_hz||s.dasar_hz||30} hari`;
+ $('#bufferKpi').innerHTML=[
+  ['Mode buffer',mode,s.mode==='otomatis'?'Dikalibrasi dari kesalahan pada validasi.':'Nilai dimasukkan pengguna.'],
+  ['Buffer rata-rata',s.buffer_rata==null?'Belum tersedia':fmt(s.buffer_rata,1)+'%',s.mode==='otomatis'?`Tingkat cakupan ${s.tingkat}%`:'Buffer manual'],
+  ['Roasted dengan buffer',fmt(s.roasted_buffer,2)+' <small>kg</small>','Kebutuhan roasted + buffer.'],
+  ['Green bean dengan buffer',s.green_buffer==null?'Belum lengkap':fmt(s.green_buffer,2)+' <small>kg</small>',s.green_mapping_complete?'Dikonversi per varian.':'Periksa rate yang belum tersedia.']
+ ].map(([a,v,n])=>`<div class="card kpi buffer-kpi"><span>${a}</span><b>${v}</b><small>${n}</small></div>`).join('');
+ const explain=[];
+ if(s.mode==='otomatis'){
+  explain.push(`Buffer otomatis dikalibrasi dari kesalahan ramalan rekursif pada periode validasi, menggunakan tingkat ${s.tingkat}%. Ini adalah tambahan perencanaan, bukan jaminan stok cukup.`);
+  explain.push(`Basis kalibrasi: ${basis.toLowerCase()}, dari ${fmt(s.buffer_origins||0)} titik awal ramalan validasi.`);
+  if(s.buffer_horizon_proxy)explain.push('Validasi historis hanya cukup untuk mengkalibrasi sampai 30 hari; hasil buffer 60/90 hari merupakan pendekatan sementara dan perlu ditafsirkan dengan hati-hati.');
+ }else{explain.push('Buffer manual diterapkan sesuai nilai yang dimasukkan. Nilai ini bukan hasil kalibrasi otomatis.');}
+ explain.push('Kebutuhan dengan buffer tidak mengurangi stok gudang dan bukan jumlah pembelian bersih.');
+ $('#bufferExplain').textContent=explain.join(' ');
+ $('#stockNote').textContent=`Konversi: green bean = roasted bean ÷ (1 − penyusutan). Rate tersedia untuk ${s.shrinkage_coverage||0}/${s.total_variants||0} varian dari data/Stock.xlsx → sheet Penyusutan. ${s.green_provisional_count?`${s.green_provisional_count} pemetaan nama varian masih perlu konfirmasi sehingga hasil terkait bersifat sementara. `:''}Kebutuhan di sini adalah kebutuhan bruto, bukan jumlah pembelian setelah mengurangi stok gudang.`;
+ const H=d.harian,pad=n=>Array(n).fill(null);
+ draw('cLine',{type:'line',data:{labels:[...H.h,...H.f],datasets:[
+  {label:'Riwayat',data:[...H.hv,...pad(H.f.length)],borderColor:COL.actual,borderWidth:2,pointRadius:0,tension:.2},
+  {label:'Prediksi',data:[...pad(H.h.length-1),H.hv[H.hv.length-1],...H.fv],borderColor:COL.pred,borderWidth:2,pointRadius:0,borderDash:[5,3],tension:.2}]},
+  options:{maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom'}},scales:{y:{...axis,title:{display:true,text:'kg / hari'}},x:{grid:{display:false},ticks:{maxTicksLimit:8}}}}});
+ const top=(d.tabel||[]).slice(0,10);
+ draw('cBar',{type:'bar',data:{labels:top.map(r=>r.varian),datasets:[
+  {label:'Roasted',data:top.map(r=>r.roasted_kg),backgroundColor:COL.roast,borderRadius:4},
+  {label:'Green bean',data:top.map(r=>r.green_kg),backgroundColor:COL.green,borderRadius:4}]},
+  options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},scales:{y:{...axis,title:{display:true,text:'kg'}},x:{grid:{display:false},ticks:{callback(v){const l=this.getLabelForValue(v);return l.length>12?l.slice(0,11)+'…':l;}}}}}});
+ table($('#tStok'),[
+  {t:'Varian',k:'varian'},
+  {t:'Roasted (kg)',k:'roasted_kg',n:1,f:v=>fmt(v,3)},
+  {t:'Penyusutan',k:'penyusutan_pct',n:1,f:v=>v==null?'Tidak tersedia':fmt(v,1)+'%'},
+  {t:'Green bean (kg)',k:'green_kg',n:1,f:v=>v==null?'Tidak tersedia':fmt(v,3)},
+  {t:'Buffer',k:'buffer_pct',n:1,f:v=>v==null?'Tidak tersedia':fmt(v,1)+'%'},
+  {t:'Roasted + buffer (kg)',k:'permintaan_terlindungi_kg',n:1,f:v=>fmt(v,3)},
+  {t:'Green + buffer (kg)',k:'green_terlindungi_kg',n:1,f:v=>v==null?'Rate tidak tersedia':fmt(v,3)},
+  {t:'Status pemetaan',k:'status_pemetaan',f:v=>String(v||'').toLowerCase().startsWith('cocok')?'<span class="status-text good">Cocok</span>':'<span class="status-text caution">Perlu konfirmasi</span>'}
+ ],d.tabel||[]);
+ table($('#tPre'),[{t:'Tanggal',k:'tanggal'},{t:'Varian',k:'varian'},{t:'Unit',k:'terjual_unit',n:1,f:fmt},{t:'Gram',k:'gram_terjual',n:1,f:fmt},
+  {t:'Hari (0=Sen)',k:'dow',n:1},{t:'Bulan',k:'bulan',n:1},{t:'Akhir pekan',k:'akhir_pekan',n:1},{t:'Gajian (proksi)',k:'gajian',n:1},
+  {t:'Tanggal kembar',k:'tgl_kembar',n:1},{t:'Libur',k:'libur',n:1},{t:'Lag 7',k:'lag_7',n:1,f:v=>fmt(v)},{t:'Rata-rata 28 hari',k:'rm_28',n:1,f:v=>fmt(v)},{t:'Tanggal tak lengkap',k:'tanggal_tidak_lengkap',f:v=>v?'Ya':'Tidak'}],d.pre||[]);
+ $('#log').innerHTML=[...(d.log||[]).map(l=>`<li>${esc(l)}</li>`),...(d.warn||[]).map(l=>`<li class="w">${esc(l)}</li>`)].join('')||'<li>Tidak ada catatan tambahan.</li>';
+ RG=d.ringkasan;$('#rg').onchange=ringkasan;ringkasan();
+ loadAI();
+ const resultStep=document.querySelector('.steps .step:last-child');if(resultStep)resultStep.classList.add('complete');
+ $('#out').scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+}
+</script>{% endblock %}
